@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ClinicalDistill Output Schema",
+  "type": "object",
+  "properties": {
+    "symptoms": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "List of symptoms mentioned in the clinical text"
+    },
+    "duration": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Duration per symptom, use 'unspecified' if not mentioned"
+    },
+    "severity": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Severity per symptom, use 'unspecified' if not mentioned"
+    },
+    "urgent": {
+      "type": "boolean",
+      "description": "True if any symptom suggests clinical urgency"
+    }
+  },
+  "required": ["symptoms", "duration", "severity", "urgent"]
+}
