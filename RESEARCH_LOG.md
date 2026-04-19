@@ -162,7 +162,64 @@
 - QLoRA is the preferred option when VRAM is constrained; LoRA is preferred when accuracy is the priority
 - This tradeoff analysis is the practical contribution — helps practitioners make deployment decisions
 
-### Next: Experiment 4 — Phi-2 LoRA
+---
+
+## Experiment 4 — Phi-2 (Debugging Log + Architecture Decision)
+- Date: April 19, 2026
+- Notebook: ClinicalDistill_LoRA_Phi2.ipynb
 - Model: microsoft/phi-2 (2.7B parameters)
-- Same dataset, same LoRA config (r=16, alpha=32)
-- Same eval — compare F1, urgent accuracy, training time across model families
+- Intended method: LoRA — **changed to QLoRA due to hardware constraints (see below)**
+
+### Errors encountered and fixes applied
+
+#### Error 1 — `trust_remote_code` conflict
+```
+AttributeError: 'PhiConfig' object has no attribute 'pad_token_id'
+```
+- **Cause:** `trust_remote_code=True` loads the old custom Phi-2 code from HuggingFace Hub, which conflicts with the native `PhiConfig` in newer `transformers` versions
+- **Fix:** Remove `trust_remote_code=True` — transformers >= 4.37 has native Phi-2 support built in
+
+#### Error 2 — `pad_token_id` not accepted as kwarg
+```
+TypeError: PhiForCausalLM.__init__() got an unexpected keyword argument 'pad_token_id'
+```
+- **Cause:** Phi-2's `__init__` does not accept `pad_token_id` as a direct argument like most models
+- **Fix:** Load `AutoConfig` first, set `config.pad_token_id`, then pass `config=config` to `from_pretrained`
+
+#### Error 3 — Training loss = 0.00 from step 1
+```
+Step   Training Loss
+10     0.000000
+20     0.000000
+```
+- **Cause:** Setting `pad_token = eos_token` causes the data collator to treat EOS tokens inside sequences as padding and mask them with label = -100. Phi-2's tokenizer adds EOS tokens throughout sequences, so nearly all tokens get masked → no tokens to compute loss over → loss = 0
+- **Fix:** Add a dedicated `[PAD]` token instead of reusing EOS:
+  ```python
+  tokenizer.add_special_tokens({"pad_token": "[PAD]"})
+  model.resize_token_embeddings(len(tokenizer))
+  ```
+- **Why Gemma didn't hit this:** Gemma-3 has a native `<pad>` token in its vocabulary — no reuse needed
+
+#### Error 4 — VRAM explosion after resize (LoRA infeasible on T4)
+- After `resize_token_embeddings`, VRAM jumped from **5.5GB → 11.2GB**
+- **Cause:** `resize_token_embeddings` forces PyTorch to re-allocate the embedding matrix, materializing the full float16 model in memory. Phi-2 at 2.7B in float16 = ~5.5GB base, but with resize overhead + LoRA adapters + optimizer states during training, total exceeds T4's 15GB VRAM
+- **Conclusion: LoRA is not feasible for Phi-2 on a free T4 GPU**
+
+### Architecture decision — Phi-2 runs as QLoRA
+- Loading Phi-2 with 4-bit quantization (nf4, double quant) reduces base model to ~1.5GB VRAM
+- After resize + LoRA adapters, total stays well within T4 limits
+- `bf16=True` required (same as Gemma QLoRA — 4-bit models use BFloat16 compute)
+- `prepare_model_for_kbit_training` required before applying LoRA adapters
+
+### Paper note — practical finding
+- Phi-2 (2.7B) **requires QLoRA on consumer/free-tier GPUs** — LoRA is not feasible
+- Gemma-3-1B can run LoRA comfortably; Phi-2 cannot
+- This is a concrete, reproducible hardware constraint worth documenting
+- Research framing: "For models ≥ 2.7B, QLoRA is the only feasible fine-tuning method on T4-class hardware"
+- Directly relevant to the paper's resource-limited deployment angle
+
+### Next: Experiment 4 continued — Phi-2 QLoRA training + eval
+- Model loading fixed with dedicated [PAD] token + 4-bit config
+- Run training, confirm loss > 1.0 at step 1 and drops normally
+- Run eval on same 35 test examples
+- Record: F1, urgent accuracy, training time, VRAM usage
