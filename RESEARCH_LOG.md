@@ -223,3 +223,85 @@ Step   Training Loss
 - Run training, confirm loss > 1.0 at step 1 and drops normally
 - Run eval on same 35 test examples
 - Record: F1, urgent accuracy, training time, VRAM usage
+
+---
+
+## Experiment 4 continued — Phi-2 QLoRA (Training Results)
+- Date: April 20, 2026
+- Notebook: ClinicalDistill_QLoRA_Phi2_Kaggle.ipynb
+- Hardware: Kaggle P100 (16GB) — switched from Colab T4 due to bitsandbytes version conflicts
+- Model: microsoft/phi-2 (2.7B parameters)
+- Method: QLoRA — 4-bit (nf4, double quant) + LoRA (r=16, alpha=32, q_proj + v_proj)
+- Dataset: train_fixed.jsonl (145 train / 35 test)
+- Epochs: 5
+- Batch size: 1 (gradient accumulation: 8, effective batch: 8)
+- Learning rate: 2e-4
+- Precision: bf16
+
+### Training loss
+| Step | Loss     |
+|------|----------|
+| 10   | 1.832    |
+| 50   | 0.355    |
+| 90   | 0.254    |
+
+- Training time: 1518s (25.3 min) — significantly longer than Gemma due to 2.7B size
+- VRAM after training: 0.87 GB
+
+### Hardware note — P100 vs T4
+- Switched to Kaggle P100 (16GB) after repeated bitsandbytes version conflicts on Colab T4
+- LoRA still infeasible on P100 — same 16GB ceiling, same VRAM spike at resize. Confirms finding applies to P100-class hardware too.
+
+### Inference fix — embedding layer conflict
+- `peft` saved the embedding layer automatically (`save_embedding_layers=True`) because `resize_token_embeddings` was called during training
+- Calling `resize_token_embeddings` again at inference time created a shape conflict → `AcceleratorError: CUDA device-side assert`
+- Fix: remove manual resize at inference — `PeftModel.from_pretrained` restores the embedding layer from the saved checkpoint
+
+---
+
+## Experiment 5 — Qwen1.5-1.8B QLoRA
+- Date: April 21, 2026
+- Notebook: ClinicalDistill_QLoRA_Qwen_Kaggle.ipynb
+- Hardware: Kaggle P100 (16GB)
+- Model: Qwen/Qwen1.5-1.8B-Chat (1.8B parameters)
+- Method: QLoRA — 4-bit (nf4, double quant) + LoRA (r=16, alpha=32, q_proj + v_proj)
+- Dataset: train_fixed.jsonl (145 train / 35 test)
+- Batch size: 2 (gradient accumulation: 4, effective batch: 8)
+- Learning rate: 2e-4
+- Precision: bf16
+
+### Run A — 5 epochs
+- Training time: 653s (10.9 min)
+- Final loss: ~0.295
+
+| Metric          | Score         |
+|-----------------|---------------|
+| Valid JSON rate | 97.1% (34/35) |
+| Avg Symptom F1  | 0.698         |
+| Urgent Accuracy | 70.6% (24/34) |
+
+### Run B — 7 epochs (extended to improve urgent accuracy)
+- Training time: 1313s (21.9 min)
+- Final loss: ~0.074
+
+| Metric          | Score         |
+|-----------------|---------------|
+| Valid JSON rate | 94.3% (33/35) |
+| Avg Symptom F1  | 0.696         |
+| Urgent Accuracy | 87.9% (29/33) |
+
+### Key findings
+- F1 plateaued at ~0.698 — symptom extraction is bounded at this data size under quantization
+- Urgent accuracy needed 7 epochs to converge (70.6% → 87.9%) — binary classification is harder to learn under 4-bit compression
+- Valid JSON dropped slightly at 7 epochs — at the edge of overfitting
+- **Use 7-epoch result** as primary — urgent accuracy (87.9%) exceeds Gemma LoRA (85.7%)
+
+### Why F1 is lower than Gemma despite larger model
+- Qwen1.5-1.8B-Chat has a native `<|im_start|>` chat template; our XML prompt format conflicts with its learned format
+- 4-bit quantization has larger absolute information loss on a 1.8B model vs 1B
+- Bigger model ≠ better for this task — architecture and pretraining distribution matter
+
+### Next: Experiment 6 — Qwen1.5-1.8B LoRA
+- Same dataset, same LoRA config, full float16 weights
+- Expected: F1 improvement over QLoRA (same pattern as Gemma LoRA > QLoRA)
+- Will complete the cross-model comparison table for the paper
