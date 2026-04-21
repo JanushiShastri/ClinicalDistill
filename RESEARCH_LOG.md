@@ -354,8 +354,10 @@ Step   Training Loss
 |-------------------|--------|--------|------------|------------|------------|------------|
 | Gemma-3-1B        | LoRA   | 1B     | 100%       | 0.781      | 85.7%      | ~2 min     |
 | Gemma-3-1B        | QLoRA  | 1B     | 100%       | 0.740      | 82.9%      | ~4 min     |
-| Qwen1.5-1.8B      | LoRA   | 1.8B   | 100%       | 0.707      | 74.3%      | ~2 min     | ← 5ep primary |
+| Qwen1.5-1.8B      | LoRA   | 1.8B   | 100%       | 0.707      | 74.3%      | ~2 min     |
 | Qwen1.5-1.8B      | QLoRA  | 1.8B   | 94.3%      | 0.696      | 87.9%      | ~22 min    |
+| LLaMA-3.2-1B      | LoRA   | 1B     | 100%       | 0.743      | 74.3%      | ~8 min     |
+| LLaMA-3.2-1B      | QLoRA  | 1B     | 100%       | **0.767**  | 74.3%      | ~8 min     |
 
 ### Key findings from cross-model comparison
 
@@ -377,3 +379,66 @@ Step   Training Loss
 **Finding 4 — Training time scales non-linearly with model size under QLoRA**
 - Qwen QLoRA (1.8B, 7ep): 22 min vs Gemma QLoRA (1B, 5ep): 4 min
 - 1.8x parameters → ~5.5x longer training on same hardware
+
+**Finding 5 — LLaMA-3.2-1B QLoRA outperforms its own LoRA baseline (F1 0.767 vs 0.743)**
+- Reverses the LoRA > QLoRA pattern seen in Gemma and Qwen
+- Likely cause: 4-bit quantization acts as regularization on an already instruction-tuned model, reducing overfitting on 145 examples
+- Valid JSON remains 100% for both — output format unaffected
+- Urgent accuracy identical (74.3%) — quantization does not help or hurt classification here
+
+---
+
+## Experiment 7 — LLaMA-3.2-1B LoRA
+- Date: April 21, 2026
+- Notebook: ClinicalDistill_LoRA_LLaMA_Colab.ipynb
+- Hardware: Google Colab T4 (15.6GB)
+- Model: meta-llama/Llama-3.2-1B-Instruct (1,235,814,400 parameters)
+- Method: LoRA (r=16, alpha=32, q_proj + v_proj, dropout=0.05)
+- Trainable params: 1,703,936 (0.1377%)
+- Dataset: train_fixed.jsonl (145 train / 35 test)
+- Epochs: 5
+- Batch size: 2 (gradient accumulation: 4, effective batch: 8)
+- Learning rate: 2e-4
+- Precision: bf16 (LLaMA-3.2 uses bfloat16 internally)
+- Training time: 469s (7.8 min)
+- VRAM: 2.47GB base, 2.51GB training
+
+### Evaluation Results
+
+| Metric           | Score         |
+|------------------|---------------|
+| Valid JSON rate  | 100% (35/35)  |
+| Avg Symptom F1   | 0.743         |
+| Urgent Accuracy  | 74.3% (26/35) |
+
+---
+
+## Experiment 8 — LLaMA-3.2-1B QLoRA
+- Date: April 21, 2026
+- Notebook: ClinicalDistill_QLoRA_LLaMA_Colab.ipynb
+- Hardware: Google Colab T4 (15.6GB)
+- Model: meta-llama/Llama-3.2-1B-Instruct (1,235,814,400 parameters)
+- Method: QLoRA — 4-bit (nf4, double quant, bfloat16 compute) + LoRA (r=16, alpha=32, q_proj + v_proj)
+- Trainable params: 1,703,936 (0.1377%)
+- Dataset: train_fixed.jsonl (145 train / 35 test)
+- Epochs: 5
+- Batch size: 2 (gradient accumulation: 4, effective batch: 8)
+- Learning rate: 2e-4
+- Precision: bf16
+- Training time: 477s (7.9 min)
+- VRAM: 1.03GB base, 1.58GB training
+
+### Evaluation Results
+
+| Metric           | Score         |
+|------------------|---------------|
+| Valid JSON rate  | 100% (35/35)  |
+| Avg Symptom F1   | 0.767         |
+| Urgent Accuracy  | 74.3% (26/35) |
+
+### Notable finding — QLoRA beats LoRA on F1 for LLaMA
+- F1: 0.767 (QLoRA) vs 0.743 (LoRA) — QLoRA wins by +0.024
+- Reverses the expected LoRA > QLoRA pattern
+- LLaMA-3.2-1B-Instruct is already instruction-tuned; LoRA at full precision may overfit slightly on 145 examples
+- 4-bit quantization adds noise that acts as implicit regularization
+- Training time nearly identical (7.8 vs 7.9 min) — quantization overhead negligible at 1B scale on T4
