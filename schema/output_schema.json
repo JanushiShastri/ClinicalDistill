@@ -23,5 +23,28 @@
       "description": "True if any symptom suggests clinical urgency"
     }
   },
-  "required": ["symptoms", "duration", "severity", "urgent"]
+  "required": ["symptoms", "duration", "severity", "urgent"],
+  "metadata": {
+    "type": "object",
+    "description": "Optional provenance information for reproducibility and paper documentation",
+    "properties": {
+      "source_text": {
+        "type": "string",
+        "description": "The original clinical input text"
+      },
+      "generated_by": {
+        "type": "string",
+        "description": "Model used to generate this label, e.g. 'claude-opus-4-6', 'gpt-4o'"
+      },
+      "split": {
+        "type": "string",
+        "enum": ["train", "test"],
+        "description": "Dataset split this example belongs to"
+      },
+      "clinical_domain": {
+        "type": "string",
+        "description": "Clinical area, e.g. 'cardiac', 'respiratory', 'neurological', 'gastrointestinal'"
+      }
+    }
+  }
 }
