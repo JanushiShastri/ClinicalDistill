@@ -170,7 +170,7 @@ def parse_output(raw: str) -> dict:
 def severity_badge(s: str) -> str:
     s = (s or "").lower().strip()
     if not s or s in ("unspecified", "unknown", "n/a", "none", "not mentioned", "—", "not stated"):
-        return '<span style="color:#d1d5db;font-style:italic">—</span>'
+        return '<span style="color:#9ca3af;font-size:0.85rem">not reported</span>'  # ← plain text, always visible
     if any(w in s for w in ("severe", "critical", "extreme", "crushing", "sudden", "acute", "high", "sharp")):
         return f'<span style="background:#fef2f2;color:#dc2626;font-weight:600;padding:2px 8px;border-radius:4px;font-size:0.85rem">▲ {s}</span>'
     if any(w in s for w in ("moderate", "significant", "worsening", "progressive", "persistent")):
@@ -178,12 +178,10 @@ def severity_badge(s: str) -> str:
     if any(w in s for w in ("mild", "slight", "minor", "low", "minimal", "light")):
         return f'<span style="background:#f0fdf4;color:#16a34a;font-weight:600;padding:2px 8px;border-radius:4px;font-size:0.85rem">▼ {s}</span>'
     return f'<span style="background:#f1f5f9;color:#475569;padding:2px 8px;border-radius:4px;font-size:0.85rem">{s}</span>'
-
-
 def format_duration(d: str) -> str:
     d = (d or "").lower().strip()
     if not d or d in ("unspecified", "unknown", "n/a", "none", "not mentioned", "not stated"):
-        return '<span style="color:#d1d5db;font-style:italic">—</span>'
+        return '<span style="color:#9ca3af;font-size:0.85rem">not reported</span>'
     return f'<span style="color:#4b5563">{d}</span>'
 
 

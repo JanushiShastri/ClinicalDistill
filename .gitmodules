@@ -1,0 +1,3 @@
+[submodule "po-community-mcp"]
+	path = po-community-mcp
+	url = https://github.com/prompt-opinion/po-community-mcp.git
