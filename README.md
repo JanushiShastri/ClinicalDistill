@@ -1,4 +1,4 @@
-# ClinicalDistill
+<!-- # ClinicalDistill
 
 Fine-tuning small language models for structured clinical symptom extraction from unstructured medical text.
 
@@ -80,4 +80,217 @@ Try it live → [huggingface.co/spaces/Janushi/ClinicalDistill](https://huggingf
 
 ```bash
 pip install -r requirements.txt
+``` -->
+
+# ClinicalDistill 🏥
+
+[![HuggingFace Model](https://img.shields.io/badge/🤗_Model-ClinicalDistill--Gemma--1B-yellow)](https://huggingface.co/Janushi/ClinicalDistill-Gemma-1B)
+[![Live Demo](https://img.shields.io/badge/🎮_Demo-HuggingFace_Spaces-blue)](https://huggingface.co/spaces/Janushi/ClinicalDistill)
+[![Hackathon](https://img.shields.io/badge/🏆_Agents_Assemble-Devpost-green)](https://agents-assemble.devpost.com)
+
+Fine-tuning small language models for structured clinical symptom extraction from unstructured medical text — deployed as a FHIR-aware MCP tool on Prompt Opinion.
+
+---
+
+## Problem
+
+Doctors and nurses write thousands of unstructured clinical notes every day:
+
+> *"Patient has been feeling off, chest feels weird, gets tired walking to the kitchen"*
+
+These notes are unsearchable, unstructured, and cannot feed into clinical decision systems. Manual data entry takes hours per day and introduces errors. ClinicalDistill solves this automatically.
+
+---
+
+## Solution
+
+ClinicalDistill converts unstructured clinical text into structured FHIR-ready data in seconds.
+
+**Input:**
 ```
+Patient has chest pain for 3 days, mild shortness of breath
+```
+
+**Output:**
+```json
+{
+  "symptoms": ["chest pain", "shortness of breath"],
+  "duration": ["3 days", "unspecified"],
+  "severity": ["unspecified", "mild"],
+  "urgent": true
+}
+```
+
+---
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                  Prompt Opinion Platform                  │
+│                                                           │
+│   ┌─────────────────┐   A2A    ┌──────────────────────┐  │
+│   │  General Chat   │ ───────▶ │  ClinicalDistill      │  │
+│   │  Agent (FHIR)   │          │  Agent (MCP)          │  │
+│   └─────────────────┘          └──────────┬───────────┘  │
+│                                            │ MCP Call     │
+└────────────────────────────────────────────┼─────────────┘
+                                             │
+                                  ┌──────────▼───────────┐
+                                  │   MCP Server          │
+                                  │   (uvicorn + ngrok)   │
+                                  │                       │
+                                  │  ExtractSymptoms      │
+                                  │  CheckUrgency         │
+                                  │  AnalyzePatientNotes  │
+                                  │  CheckDocuments       │
+                                  └──────────┬───────────┘
+                                             │ OpenAI API
+                                  ┌──────────▼───────────┐
+                                  │       GPT-4o          │
+                                  │  Clinical Extraction  │
+                                  └──────────────────────┘
+
+Research Layer (HuggingFace):
+┌──────────────┐  ┌──────────────┐  ┌──────────────┐
+│  Gemma-3-1B  │  │ Qwen1.5-1.8B │  │ LLaMA-3.2-1B │
+│  F1: 0.781   │  │  F1: 0.707   │  │  F1: 0.767   │
+│  ⭐ Best     │  │              │  │              │
+└──────────────┘  └──────────────┘  └──────────────┘
+```
+
+---
+
+## Results
+
+| Model | Method | Params | Valid JSON | F1 | Urgent Acc |
+|-------|--------|--------|------------|----|------------|
+| **Gemma-3-1B** | **LoRA** | **1B** | **100%** | **0.781** | **85.7%** |
+| Gemma-3-1B | QLoRA | 1B | 100% | 0.740 | 82.9% |
+| LLaMA-3.2-1B | QLoRA | 1.24B | 100% | 0.767 | 74.3% |
+| LLaMA-3.2-1B | LoRA | 1.24B | 100% | 0.743 | 74.3% |
+| Qwen1.5-1.8B | LoRA | 1.8B | 100% | 0.707 | 74.3% |
+| Qwen1.5-1.8B | QLoRA | 1.8B | 94.3% | 0.696 | 87.9% |
+
+---
+
+## Key Findings
+
+- **Gemma-3-1B outperforms larger models** despite having the fewest parameters
+- **QLoRA retains 94.7% of LoRA accuracy** at 75% less GPU memory — critical for resource-limited healthcare settings
+- **LLaMA-3.2 is the only model where QLoRA beats LoRA** — hypothesis: 4-bit compression acts as regularization on instruction-tuned architectures
+- **Phi-2 (2.7B) exceeds T4 VRAM limit** under float16 LoRA — documented as a reproducibility finding for researchers
+
+---
+
+## MCP Tools
+
+| Tool | Description |
+|------|-------------|
+| `ExtractClinicalSymptoms` | Extracts structured symptoms, duration, severity and urgency from any clinical note |
+| `CheckClinicalUrgency` | Quick triage — returns urgent flag with reason and recommended action |
+| `AnalyzePatientNotes` | Automated pipeline: reads patient FHIR documents, extracts symptoms, attempts FHIR write-back |
+| `CheckPatientDocuments` | Lists all clinical documents for a patient in their FHIR record |
+
+---
+
+## Notebooks
+
+| Notebook | Model | Method | Platform |
+|----------|-------|--------|----------|
+| ClinicalDistill_LoRA_Gemma.ipynb | Gemma-3-1B | LoRA | Colab T4 |
+| ClinicalDistill_QLoRA_Gemma.ipynb | Gemma-3-1B | QLoRA | Colab T4 |
+| ClinicalDistill_LoRA_LLaMA.ipynb | LLaMA-3.2-1B | LoRA | Colab T4 |
+| ClinicalDistill_QLoRA_LLaMA.ipynb | LLaMA-3.2-1B | QLoRA | Colab T4 |
+| ClinicalDistill_LoRA_Qwen.ipynb | Qwen1.5-1.8B | LoRA | Colab T4 |
+| ClinicalDistill_QLoRA_Qwen.ipynb | Qwen1.5-1.8B | QLoRA | Kaggle P100 |
+
+---
+
+## Stack
+
+- **Fine-tuning:** LoRA + QLoRA via PEFT + TRL
+- **Training:** Google Colab T4 + Kaggle P100 (free tier only)
+- **Dataset:** 145 train / 35 test synthetic clinical examples (GPT-4o generated)
+- **Models:** Gemma-3-1B (Google), Qwen1.5-1.8B (Alibaba), LLaMA-3.2-1B (Meta)
+- **MCP Server:** FastMCP + uvicorn + ngrok
+- **Platform:** Prompt Opinion (FHIR-aware MCP + A2A)
+- **Deployment:** HuggingFace Hub + Gradio Spaces
+
+---
+
+## Data
+
+- `data/train_fixed.jsonl` — 145 examples (120 formal clinical + 25 casual/colloquial)
+- `data/test_fixed.jsonl` — 35 examples (30 formal + 5 casual)
+- **Domains:** cardiac, respiratory, neurological, gastrointestinal
+- **Generated by:** GPT-4o (formal) + Claude (casual)
+
+---
+
+## Project Structure
+
+```
+ClinicalDistill/
+├── notebooks/              # Fine-tuning experiments (6 notebooks)
+├── data/                   # Training + test datasets
+│   ├── train_fixed.jsonl
+│   └── test_fixed.jsonl
+├── mcp_server/             # Custom MCP tools
+│   ├── clinical_distill_tool.py   # Core extraction tools
+│   ├── mcp_instance.py            # Tool registration + FHIR extension
+│   └── fhir_client.py             # FHIR client with create() support
+├── po-community-mcp/       # Prompt Opinion starter (git submodule)
+├── schema/                 # JSON output schema
+├── RESEARCH_LOG.md         # Full experiment log
+├── start_server.sh         # Quick start script
+└── requirements.txt
+```
+
+---
+
+## Quick Start — MCP Server
+
+```bash
+# Clone repo
+git clone https://github.com/JanushiShastri/ClinicalDistill.git
+cd ClinicalDistill/po-community-mcp/python
+
+# Install dependencies (use existing conda env)
+conda activate llm-workspace
+pip install -r requirements.txt
+pip install openai
+
+# Set OpenAI key
+export OPENAI_API_KEY="your-key-here"
+
+# Run server
+uvicorn main:app --reload
+
+# Expose with ngrok (new terminal)
+ngrok http 8000 --host-header="localhost:8000"
+
+# Register on Prompt Opinion
+# URL: https://YOUR-NGROK-URL/mcp
+# Transport: Streamable HTTP
+# Enable FHIR context toggle
+```
+
+---
+
+## Research Contribution
+
+This project benchmarks **knowledge distillation from GPT-4o into small fine-tuned LLMs** for clinical NLP on free-tier compute. The core finding is that a 1B parameter model fine-tuned with LoRA can achieve 0.781 F1 on clinical symptom extraction — making clinical NLP deployable in resource-limited healthcare settings without expensive API dependencies.
+
+The MCP tool uses GPT-4o for production reliability, while the fine-tuned models serve as the research contribution demonstrating the same capability at 1/100th the cost.
+
+---
+
+## Links
+
+| Resource | Link |
+|----------|------|
+| 🤗 HuggingFace Model | [ClinicalDistill-Gemma-1B](https://huggingface.co/Janushi/ClinicalDistill-Gemma-1B) |
+| 🎮 Live Demo | [HuggingFace Spaces](https://huggingface.co/spaces/Janushi/ClinicalDistill) |
+| 📊 Research Log | [RESEARCH_LOG.md](RESEARCH_LOG.md) |
+| 🏆 Hackathon | [Agents Assemble — Devpost](https://agents-assemble.devpost.com) |
